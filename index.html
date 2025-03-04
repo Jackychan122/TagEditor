@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TagEditor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE',
+                    },
+                },
+            },
+        }
+    </script>
+    <style>
+        .editor-wrap {
+            white-space: pre-wrap;
+            tab-size: 4;
+        }
+        .tag-highlight {
+            transition: background-color 0.3s;
+        }
+        .editor-container {
+            overflow: auto;
+            position: relative;
+        }
+        .line-numbers {
+            user-select: none;
+            text-align: right;
+            color: #888;
+            padding-right: 8px;
+            border-right: 1px solid #ddd;
+        }
+        .dark .line-numbers {
+            border-right-color: #444;
+        }
+        .tag-pair-highlight {
+            text-decoration: underline;
+            font-weight: bold;
+        }
+        .virtual-container {
+            position: relative;
+            overflow: hidden;
+        }
+        .virtual-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+        }
+    </style>
+</head>
+<body class="font-sans antialiased bg-white dark:bg-[#181818] text-gray-900 dark:text-gray-100">
+    <!-- Check for dark mode -->
+    <script>
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+    </script>
+
+    <div class="min-h-screen flex flex-col">
+        <!-- App Header -->
+        <header class="bg-primary text-white p-3 shadow-md">
+            <div class="container mx-auto flex items-center justify-between">
+                <h1 class="text-xl font-bold">TagEditor</h1>
+                <div class="hidden md:block">
+                    <span class="text-sm opacity-75">A lightweight editor for structured text</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Toolbar -->
+        <div class="bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-2">
+            <div class="container mx-auto flex flex-wrap items-center gap-2">
+                <button id="saveTagBtn" class="px-3 py-1.5 bg-primary text-white rounded hover:bg-opacity-90 transition flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    New Tag
+                </button>
+                <button id="copyAllBtn" class="px-3 py-1.5 bg-gray-700 dark:bg-gray-600 text-white rounded hover:bg-opacity-90 transition flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Copy All
+                </button>
+                <div class="ml-auto">
+                    <button id="toggleSidebar" class="md:hidden px-3 py-1.5 bg-gray-300 dark:bg-gray-700 rounded hover:bg-opacity-90 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Sidebar -->
+            <div id="sidebar" class="w-64 border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 hidden md:block transition-all duration-300 transform">
+                <div class="p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="font-semibold">Tag Library</h2>
+                        <div class="relative">
+                            <input 
+                                type="text" 
+                                id="tagSearch" 
+                                placeholder="Search tags..." 
+                                class="w-full pl-2 pr-6 py-1 text-base border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-800 dark:text-gray-100"
+                            >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute right-2 top-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                    </div>
+                    
+                    <!-- Tag List -->
+                    <div id="tagList" class="space-y-2 max-h-[calc(100vh-12rem)] overflow-y-auto">
+                        <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                            No tags created yet.<br>
+                            Click "New Tag" to get started.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Editor Area -->
+            <div class="flex-1 flex flex-col overflow-hidden">
+                <div class="flex-1 overflow-hidden p-2">
+                    <div class="w-full h-full border border-gray-300 dark:border-gray-700 rounded shadow-sm">
+                        <div class="editor-container flex h-full">
+                            <div id="lineNumbers" class="line-numbers p-2 w-12 bg-gray-100 dark:bg-gray-800"></div>
+                            <div class="flex-1 h-full">
+                                <textarea 
+                                    id="editor" 
+                                    class="editor-wrap w-full h-full p-2 outline-none resize-none text-base font-mono bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                    spellcheck="false"
+                                ></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tag Modal -->
+    <div id="tagModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-md w-full p-5 mx-4">
+            <h3 class="text-lg font-semibold mb-4">Create New Tag</h3>
+            <form id="tagForm" class="space-y-4">
+                <div>
+                    <label for="tagName" class="block text-sm font-medium mb-1">Tag Name</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">&lt;</span>
+                        <input 
+                            type="text" 
+                            id="tagName" 
+                            class="w-full pl-8 pr-8 py-2 text-base border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white"
+                            placeholder="tag"
+                            required
+                            pattern="[a-zA-Z0-9-_]+"
+                        >
+                        <span class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500">&gt;</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Alphanumeric characters, hyphens, and underscores only.</p>
+                </div>
+                <div>
+                    <label for="tagColor" class="block text-sm font-medium mb-1">Tag Color</label>
+                    <div class="flex items-center space-x-3">
+                        <input 
+                            type="color" 
+                            id="tagColor" 
+                            class="h-10 w-10 rounded cursor-pointer border border-gray-300 dark:border-gray-600"
+                            value="#5D5CDE"
+                        >
+                        <input 
+                            type="text" 
+                            id="tagColorHex" 
+                            class="flex-1 pl-2 py-2 text-base border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700 dark:text-white"
+                            value="#5D5CDE"
+                            pattern="^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"
+                        >
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2 pt-2">
+                    <div class="p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 flex-1">
+                        <div class="font-mono text-sm"><span id="tagPreview">&lt;tag&gt;</span>Text<span id="tagPreviewClosing">&lt;/tag&gt;</span></div>
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button type="button" id="cancelTagBtn" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded hover:bg-opacity-90 transition">
+                        Save Tag
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Wrap Tag Modal -->
+    <div id="wrapModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-md w-full p-5 mx-4">
+            <h3 class="text-lg font-semibold mb-4">Select Tag to Wrap</h3>
+            <div class="max-h-60 overflow-y-auto space-y-2 mb-4" id="wrapTagList">
+                <div class="text-center text-gray-500 dark:text-gray-400 py-4">
+                    No tags available. Create tags first.
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3">
+                <button type="button" id="cancelWrapBtn" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-md w-full p-5 mx-4">
+            <h3 class="text-lg font-semibold mb-2">Confirm Deletion</h3>
+            <p class="mb-4 text-gray-600 dark:text-gray-300">Are you sure you want to delete this tag? This action cannot be undone.</p>
+            <div class="flex justify-end space-x-3">
+                <button type="button" id="cancelDeleteBtn" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                    Cancel
+                </button>
+                <button type="button" id="confirmDeleteBtn" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-opacity-90 transition">
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State management
+        const state = {
+            tags: [],
+            selectedText: { start: 0, end: 0, text: '' },
+            tagToDelete: null,
+            currentTagPairs: []
+        };
+
+        // DOM Elements
+        const editor = document.getElementById('editor');
+        const lineNumbers = document.getElementById('lineNumbers');
+        const tagList = document.getElementById('tagList');
+        const saveTagBtn = document.getElementById('saveTagBtn');
+        const copyAllBtn = document.getElementById('copyAllBtn');
+        const tagModal = document.getElementById('tagModal');
+        const tagForm = document.getElementById('tagForm');
+        const tagName = document.getElementById('tagName');
+        const tagColor = document.getElementById('tagColor');
+        const tagColorHex = document.getElementById('tagColorHex');
+        const tagPreview = document.getElementById('tagPreview');
+        const tagPreviewClosing = document.getElementById('tagPreviewClosing');
+        const cancelTagBtn = document.getElementById('cancelTagBtn');
+        const tagSearch = document.getElementById('tagSearch');
+        const wrapModal = document.getElementById('wrapModal');
+        const wrapTagList = document.getElementById('wrapTagList');
+        const cancelWrapBtn = document.getElementById('cancelWrapBtn');
+        const confirmModal = document.getElementById('confirmModal');
+        const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        const toggleSidebar = document.getElementById('toggleSidebar');
+        const sidebar = document.getElementById('sidebar');
+
+        // Load saved tags from localStorage
+        function loadTags() {
+            try {
+                const savedTags = localStorage.getItem('tagLibrary');
+                if (savedTags) {
+                    state.tags = JSON.parse(savedTags);
+                    renderTagList();
+                }
+            } catch (e) {
+                console.error('Error loading tags:', e);
+            }
+        }
+
+        // Save tags to localStorage
+        function saveTags() {
+            try {
+                localStorage.setItem('tagLibrary', JSON.stringify(state.tags));
+            } catch (e) {
+                console.error('Error saving tags:', e);
+            }
+        }
+
+        // Render tag library in sidebar
+        function renderTagList(filterText = '') {
+            const filteredTags = filterText 
+                ? state.tags.filter(tag => tag.name.toLowerCase().includes(filterText.toLowerCase()))
+                : state.tags;
+            
+            if (filteredTags.length === 0) {
+                tagList.innerHTML = `
+                    <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                        ${filterText ? 'No tags match your search.' : 'No tags created yet.<br>Click "New Tag" to get started.'}
+                    </div>
+                `;
+                return;
+            }
+            
+            tagList.innerHTML = '';
+            
+            filteredTags.forEach(tag => {
+                const tagItem = document.createElement('div');
+                tagItem.className = 'p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 flex items-center justify-between group';
+                
+                tagItem.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <div class="w-4 h-4 rounded-full" style="background-color: ${tag.color}"></div>
+                        <div class="font-mono">
+                            <span class="tag-highlight" style="color: ${tag.color}">&lt;${tag.name}&gt;</span>
+                        </div>
+                    </div>
+                    <div class="flex space-x-1">
+                        <button class="wrap-btn p-1 text-gray-700 dark:text-gray-300 opacity-70 hover:opacity-100 transition" 
+                            data-tag-name="${tag.name}" 
+                            aria-label="Wrap selected text with tag"
+                            title="Wrap selected text">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                        </button>
+                        <button class="delete-tag-btn p-1 text-red-600 opacity-70 hover:opacity-100 transition" 
+                            data-tag-name="${tag.name}" 
+                            aria-label="Delete tag"
+                            title="Delete tag">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    </div>
+                `;
+                
+                tagList.appendChild(tagItem);
+            });
+            
+            // Add event listeners to wrap buttons
+            document.querySelectorAll('.wrap-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const tagName = this.dataset.tagName;
+                    wrapSelectedTextWithTag(tagName);
+                });
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-tag-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const tagName = this.dataset.tagName;
+                    showDeleteConfirmation(tagName);
+                });
+            });
+        }
+
+        // Render wrap tag modal contents
+        function renderWrapTagList() {
+            if (state.tags.length === 0) {
+                wrapTagList.innerHTML = `
+                    <div class="text-center text-gray-500 dark:text-gray-400 py-4">
+                        No tags available. Create tags first.
+                    </div>
+                `;
+                return;
+            }
+            
+            wrapTagList.innerHTML = '';
+            
+            state.tags.forEach(tag => {
+                const tagItem = document.createElement('div');
+                tagItem.className = 'p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition';
+                
+                tagItem.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <div class="w-4 h-4 rounded-full" style="background-color: ${tag.color}"></div>
+                        <div class="font-mono">
+                            <span class="tag-highlight" style="color: ${tag.color}">&lt;${tag.name}&gt;</span>
+                        </div>
+                    </div>
+                `;
+                
+                tagItem.addEventListener('click', () => {
+                    wrapSelectedTextWithTag(tag.name);
+                    wrapModal.classList.add('hidden');
+                });
+                
+                wrapTagList.appendChild(tagItem);
+            });
+        }
+
+        // Wrap selected text with tag
+        function wrapSelectedTextWithTag(tagName) {
+            if (state.selectedText.text) {
+                const tag = state.tags.find(t => t.name === tagName);
+                if (!tag) return;
+                
+                const openTag = `<${tagName}>`;
+                const closeTag = `</${tagName}>`;
+                
+                const start = state.selectedText.start;
+                const end = state.selectedText.end;
+                const currentText = editor.value;
+                
+                const newText = 
+                    currentText.substring(0, start) + 
+                    openTag + 
+                    state.selectedText.text + 
+                    closeTag + 
+                    currentText.substring(end);
+                
+                editor.value = newText;
+                
+                // Save to session storage
+                saveEditorContent();
+                
+                // Update cursor position to be after the closing tag
+                const newCursorPos = start + openTag.length + state.selectedText.text.length + closeTag.length;
+                editor.setSelectionRange(newCursorPos, newCursorPos);
+                editor.focus();
+                
+                // Reset selected text
+                state.selectedText = { start: 0, end: 0, text: '' };
+                
+                // Highlight tags
+                highlightTagPairs();
+                updateLineNumbers();
+            } else {
+                alert("Please select text to wrap first.");
+            }
+        }
+
+        // Show wrap tag modal
+        function showWrapModal() {
+            renderWrapTagList();
+            wrapModal.classList.remove('hidden');
+        }
+
+        // Show tag deletion confirmation
+        function showDeleteConfirmation(tagName) {
+            state.tagToDelete = tagName;
+            confirmModal.classList.remove('hidden');
+        }
+
+        // Delete tag from library
+        function deleteTag(tagName) {
+            state.tags = state.tags.filter(tag => tag.name !== tagName);
+            saveTags();
+            renderTagList();
+            
+            // Close confirmation modal
+            confirmModal.classList.add('hidden');
+        }
+
+        // Save editor content to sessionStorage
+        function saveEditorContent() {
+            try {
+                sessionStorage.setItem('unsavedText', editor.value);
+            } catch (e) {
+                console.error('Error saving editor content:', e);
+            }
+        }
+
+        // Load editor content from sessionStorage
+        function loadEditorContent() {
+            try {
+                const savedContent = sessionStorage.getItem('unsavedText');
+                if (savedContent) {
+                    editor.value = savedContent;
+                    updateLineNumbers();
+                    highlightTagPairs();
+                }
+            } catch (e) {
+                console.error('Error loading editor content:', e);
+            }
+        }
+
+        // Update line numbers
+        function updateLineNumbers() {
+            const text = editor.value;
+            const lines = text.split('\n').length;
+            let lineNumbersHtml = '';
+            
+            for (let i = 1; i <= lines; i++) {
+                lineNumbersHtml += `<div>${i}</div>`;
+            }
+            
+            lineNumbers.innerHTML = lineNumbersHtml;
+            
+            // Sync scrolling
+            editor.addEventListener('scroll', function() {
+                lineNumbers.scrollTop = editor.scrollTop;
+            });
+        }
+
+        // Find tag pairs in text
+        function findTagPairs() {
+            const text = editor.value;
+            const tagPairs = [];
+            const openTagRegex = /<([a-zA-Z0-9-_]+)>/g;
+            const closeTagRegex = /<\/([a-zA-Z0-9-_]+)>/g;
+            
+            let match;
+            const openTags = [];
+            
+            // Find all opening tags
+            while ((match = openTagRegex.exec(text)) !== null) {
+                openTags.push({
+                    name: match[1],
+                    index: match.index,
+                    end: match.index + match[0].length
+                });
+            }
+            
+            // Find all closing tags
+            const closeTags = [];
+            while ((match = closeTagRegex.exec(text)) !== null) {
+                closeTags.push({
+                    name: match[1],
+                    index: match.index,
+                    end: match.index + match[0].length
+                });
+            }
+            
+            // Match opening and closing tags
+            for (const openTag of openTags) {
+                // Find the first matching closing tag that comes after this opening tag
+                const matchingCloseIndex = closeTags.findIndex(closeTag => 
+                    closeTag.name === openTag.name && closeTag.index > openTag.index);
+                
+                if (matchingCloseIndex !== -1) {
+                    const closeTag = closeTags[matchingCloseIndex];
+                    tagPairs.push({
+                        name: openTag.name,
+                        open: { index: openTag.index, end: openTag.end },
+                        close: { index: closeTag.index, end: closeTag.end }
+                    });
+                    
+                    // Remove the matched closing tag so it's not used again
+                    closeTags.splice(matchingCloseIndex, 1);
+                }
+            }
+            
+            return tagPairs;
+        }
+
+        // Highlight tag pairs
+        function highlightTagPairs() {
+            state.currentTagPairs = findTagPairs();
+        }
+
+        // Check if cursor is within a tag
+        function checkCursorInTag() {
+            const cursorPos = editor.selectionStart;
+            
+            // Remove any existing highlights
+            editor.classList.remove('tag-pair-highlight');
+            
+            for (const pair of state.currentTagPairs) {
+                const isInOpenTag = cursorPos >= pair.open.index && cursorPos <= pair.open.end;
+                const isInCloseTag = cursorPos >= pair.close.index && cursorPos <= pair.close.end;
+                
+                if (isInOpenTag || isInCloseTag) {
+                    // Highlight this tag pair
+                    console.log(`Cursor in tag: ${pair.name}`);
+                    return pair;
+                }
+            }
+            
+            return null;
+        }
+
+        // Create a debounce function for performance
+        function debounce(func, wait) {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), wait);
+            };
+        }
+
+        // Set up event listeners
+        function setupEventListeners() {
+            // Save Tag button
+            saveTagBtn.addEventListener('click', () => {
+                tagModal.classList.remove('hidden');
+                tagName.focus();
+            });
+            
+            // Cancel Tag button
+            cancelTagBtn.addEventListener('click', () => {
+                tagModal.classList.add('hidden');
+            });
+            
+            // Tag Form submission
+            tagForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                const name = tagName.value.trim();
+                const color = tagColorHex.value;
+                
+                // Validate input
+                if (!name) {
+                    alert('Please enter a tag name.');
+                    return;
+                }
+                
+                // Check if tag name already exists
+                if (state.tags.some(tag => tag.name === name)) {
+                    alert('A tag with this name already exists.');
+                    return;
+                }
+                
+                // Add new tag
+                state.tags.push({ name, color });
+                saveTags();
+                renderTagList();
+                
+                // Reset form and close modal
+                tagForm.reset();
+                tagColor.value = '#5D5CDE';
+                tagColorHex.value = '#5D5CDE';
+                tagPreview.style.color = '#5D5CDE';
+                tagPreview.textContent = '<tag>';
+                tagPreviewClosing.textContent = '</tag>';
+                tagModal.classList.add('hidden');
+            });
+            
+            // Color picker sync
+            tagColor.addEventListener('input', () => {
+                tagColorHex.value = tagColor.value;
+                updateTagPreview();
+            });
+            
+            tagColorHex.addEventListener('input', () => {
+                if (/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(tagColorHex.value)) {
+                    tagColor.value = tagColorHex.value;
+                    updateTagPreview();
+                }
+            });
+            
+            // Tag name preview
+            tagName.addEventListener('input', updateTagPreview);
+            
+            // Editor selection change
+            editor.addEventListener('select', () => {
+                const start = editor.selectionStart;
+                const end = editor.selectionEnd;
+                
+                if (start !== end) {
+                    state.selectedText = {
+                        start,
+                        end,
+                        text: editor.value.substring(start, end)
+                    };
+                }
+            });
+            
+            // Editor input change
+            editor.addEventListener('input', debounce(() => {
+                saveEditorContent();
+                updateLineNumbers();
+                highlightTagPairs();
+            }, 300));
+            
+            // Editor click for tag pair highlighting
+            editor.addEventListener('click', () => {
+                checkCursorInTag();
+            });
+            
+            // Editor keyup for tag pair highlighting
+            editor.addEventListener('keyup', debounce(() => {
+                checkCursorInTag();
+            }, 300));
+            
+            // Copy All button
+            copyAllBtn.addEventListener('click', () => {
+                editor.select();
+                document.execCommand('copy');
+                
+                // Show visual feedback
+                const originalText = copyAllBtn.innerHTML;
+                copyAllBtn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Copied!
+                `;
+                
+                setTimeout(() => {
+                    copyAllBtn.innerHTML = originalText;
+                }, 2000);
+            });
+            
+            // Tag search
+            tagSearch.addEventListener('input', debounce(() => {
+                renderTagList(tagSearch.value);
+            }, 300));
+            
+            // Cancel Wrap button
+            cancelWrapBtn.addEventListener('click', () => {
+                wrapModal.classList.add('hidden');
+            });
+            
+            // Cancel Delete button
+            cancelDeleteBtn.addEventListener('click', () => {
+                confirmModal.classList.add('hidden');
+                state.tagToDelete = null;
+            });
+            
+            // Confirm Delete button
+            confirmDeleteBtn.addEventListener('click', () => {
+                if (state.tagToDelete) {
+                    deleteTag(state.tagToDelete);
+                }
+            });
+            
+            // Toggle sidebar on mobile
+            toggleSidebar.addEventListener('click', () => {
+                sidebar.classList.toggle('hidden');
+            });
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                // Ctrl+S for save tag
+                if (e.ctrlKey && e.key === 's') {
+                    e.preventDefault();
+                    saveTagBtn.click();
+                }
+                
+                // Ctrl+C to copy (handled by browser)
+                
+                // Esc to close modals
+                if (e.key === 'Escape') {
+                    tagModal.classList.add('hidden');
+                    wrapModal.classList.add('hidden');
+                    confirmModal.classList.add('hidden');
+                }
+            });
+            
+            // Handle outside clicks to close modals
+            window.addEventListener('click', (e) => {
+                if (e.target === tagModal) {
+                    tagModal.classList.add('hidden');
+                }
+                if (e.target === wrapModal) {
+                    wrapModal.classList.add('hidden');
+                }
+                if (e.target === confirmModal) {
+                    confirmModal.classList.add('hidden');
+                }
+            });
+        }
+
+        // Update tag preview
+        function updateTagPreview() {
+            const name = tagName.value.trim() || 'tag';
+            const color = tagColorHex.value;
+            
+            tagPreview.textContent = `<${name}>`;
+            tagPreview.style.color = color;
+            
+            tagPreviewClosing.textContent = `</${name}>`;
+            tagPreviewClosing.style.color = color;
+        }
+
+        // Initialize the application
+        function init() {
+            loadTags();
+            loadEditorContent();
+            updateLineNumbers();
+            highlightTagPairs();
+            setupEventListeners();
+        }
+
+        // Run initialization
+        init();
+    </script>
+</body>
+</html>
